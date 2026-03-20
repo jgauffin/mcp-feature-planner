@@ -80,7 +80,7 @@ npm start          # http://localhost:3000
 The MCP server uses Streamable HTTP — no stdio process, just a URL:
 
 ```bash
-claude mcp add -s user feature-planner -t http -- http://localhost:3000/mcp
+claude mcp add -s project feature-planner -t http -- http://localhost:3000/mcp
 ```
 
 Or add it manually to `~/.claude/settings.json` or `.mcp.json`:
