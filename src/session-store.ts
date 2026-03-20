@@ -30,10 +30,6 @@ interface WaitingForReplies {
   resolve: (messages: Message[]) => void;
 }
 
-const PLAN_PREFIX =
-  '[PLAN MODE - DO NOT WRITE CODE]\n' +
-  'Discuss design, raise concerns, ask questions, propose approaches only.\n' +
-  'No code snippets, no implementation details.\n\n---\n';
 
 const DATA_DIR = join(dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1')), '..', 'data');
 const DATA_FILE = join(DATA_DIR, 'sessions.json');
@@ -141,16 +137,11 @@ export class SessionStore {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session not found: ${sessionId}`);
 
-    const prefixed =
-      session.phase === 'planning' && from !== 'coordinator'
-        ? PLAN_PREFIX + content
-        : content;
-
     const message: Message = {
       id: uuidv4(),
       from,
       to,
-      content: prefixed,
+      content,
       timestamp: Date.now(),
     };
 
@@ -162,7 +153,9 @@ export class SessionStore {
 
   private getMessagesSince(session: Session, role: Role, after: string | null): Message[] {
     const msgs = session.messages.filter(
-      (m) => m.to === role || m.to === 'all',
+      role === 'coordinator'
+        ? (m) => m.from !== 'coordinator'   // coordinator sees everything except its own
+        : (m) => m.to === role || m.to === 'all',
     );
     if (!after) return msgs;
     const idx = msgs.findIndex((m) => m.id === after);

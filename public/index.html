@@ -522,6 +522,8 @@ let renderedIds = new Set();
 let pollTimer = null;
 let isSending = false;
 let lastCoordinatorCheckTs = 0;
+let coordinatorProcessedIds = new Set();
+let autoTriggerPending = false;
 
 // ── API key ────────────────────────────────────────────────────
 const $apikey = document.getElementById('apikey-input');
@@ -753,6 +755,20 @@ function applyState() {
     renderedIds.add(msg.id);
     renderMessage(msg);
   }
+
+  // Auto-trigger coordinator when agents send new messages
+  if (!isSending && !autoTriggerPending) {
+    const newAgentMessages = session.messages.filter(m =>
+      !coordinatorProcessedIds.has(m.id) &&
+      m.from !== 'coordinator' &&
+      m.from !== '[user]' &&
+      m.from !== '[system]' &&
+      (m.to === 'coordinator' || m.to === 'all')
+    );
+    if (newAgentMessages.length > 0) {
+      autoTriggerCoordinator(newAgentMessages);
+    }
+  }
 }
 
 // ── Polling ────────────────────────────────────────────────────
@@ -803,40 +819,85 @@ document.getElementById('end-planning-btn').addEventListener('click', async () =
   await loadState();
 });
 
+// ── Auto-trigger coordinator on agent messages ─────────────────
+async function autoTriggerCoordinator(newMessages) {
+  const apiKey = localStorage.getItem('feature-planner-apikey');
+  if (!apiKey) return;
+
+  autoTriggerPending = true;
+
+  // Mark these as processed
+  for (const m of newMessages) coordinatorProcessedIds.add(m.id);
+
+  // Inject as a queued message and drain
+  const summary = newMessages
+    .map(m => `[${m.from} → ${m.to}]: ${m.content}`)
+    .join('\n\n---\n\n');
+  pendingUserMessages.push(`New messages from agents:\n\n${summary}`);
+
+  if (!isSending) {
+    drainCoordinatorQueue(apiKey);
+  }
+}
+
 // ── Send to coordinator Claude ─────────────────────────────────
 document.getElementById('send-btn').addEventListener('click', sendToCoordinator);
 document.getElementById('msg-input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendToCoordinator();
 });
 
+// Queue of user messages waiting to be picked up by the coordinator
+let pendingUserMessages = [];
+
 async function sendToCoordinator() {
-  if (isSending) return;
-  const input  = document.getElementById('msg-input');
-  const text   = input.value.trim();
+  const input = document.getElementById('msg-input');
+  const text  = input.value.trim();
   if (!text) return;
 
   const apiKey = localStorage.getItem('feature-planner-apikey');
   if (!apiKey) { alert('Set your Anthropic API key first.'); return; }
 
   input.value = '';
-  isSending   = true;
-  const sendBtn = document.getElementById('send-btn');
-  sendBtn.disabled = true;
-  sendBtn.innerHTML = '<span class="spinner"></span>Thinking…';
 
-  // Post to the session and let loadState() render it (avoids double-render)
+  // Always post immediately — the message appears in the thread right away
   await apiPost(`/session/${codeword}/message`, {
     from: '[user]', to: 'coordinator', content: text,
   });
   await loadState();
 
-  coordinatorHistory.push({ role: 'user', content: text });
+  // Queue for the coordinator and kick off a turn if idle
+  pendingUserMessages.push(text);
+  if (!isSending) {
+    drainCoordinatorQueue(apiKey);
+  }
+}
+
+async function drainCoordinatorQueue(apiKey) {
+  if (isSending) return;
+  isSending = true;
+  const sendBtn = document.getElementById('send-btn');
+  sendBtn.innerHTML = '<span class="spinner"></span>Thinking…';
 
   try {
-    await runCoordinatorLoop(apiKey);
+    while (pendingUserMessages.length > 0) {
+      // Grab all queued messages as one batch
+      const batch = pendingUserMessages.splice(0);
+      const content = batch.length === 1
+        ? batch[0]
+        : batch.map((m, i) => `Message ${i + 1}: ${m}`).join('\n\n');
+      coordinatorHistory.push({ role: 'user', content });
+
+      // Mark all current session messages as processed
+      if (session) {
+        for (const m of session.messages) coordinatorProcessedIds.add(m.id);
+      }
+
+      await runCoordinatorLoop(apiKey);
+      await loadState();
+    }
   } finally {
-    isSending        = false;
-    sendBtn.disabled = false;
+    isSending = false;
+    autoTriggerPending = false;
     sendBtn.textContent = 'Send to Claude';
     await loadState();
   }
@@ -892,17 +953,6 @@ const COORDINATOR_TOOLS = [
       required: ['overview', 'roles'],
     },
   },
-  {
-    name: 'set_phase',
-    description: 'Transition to implementing phase when all planning decisions are settled.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        phase: { type: 'string', enum: ['implementing'] },
-      },
-      required: ['phase'],
-    },
-  },
 ];
 
 async function executeTool(name, input) {
@@ -956,14 +1006,6 @@ async function executeTool(name, input) {
       await loadState();
       return 'Plan updated.';
     }
-    case 'set_phase': {
-      await savePlan();
-      const res = await apiPost(
-        `/session/${codeword}/phase`,
-        { phase: 'implementing' }
-      );
-      return res.ok ? 'Phase set to implementing.' : `Error: ${JSON.stringify(res.data)}`;
-    }
     default:
       return `Unknown tool: ${name}`;
   }
@@ -1006,7 +1048,9 @@ async function runCoordinatorLoop(apiKey) {
     '  - overview: shared context (goals, constraints, API contracts between roles)\n' +
     '  - roles: per-role task lists (each agent only sees their own section + overview)\n' +
     '- Flag unresolved questions back to the human\n' +
-    '- Never write code or suggest implementation details yourself\n\n' +
+    '- Never write code or suggest implementation details yourself\n' +
+    '- You CANNOT transition to implementation — only the human facilitator can do that via the UI. When you believe planning is complete, tell the human and recommend they end planning.\n' +
+    '- Before making significant architecture decisions (tech choices, data models, API design, component boundaries, state management approach), present the options and trade-offs to the human and wait for their approval. You coordinate — the human decides.\n\n' +
     'CRITICAL communication rules:\n' +
     '- Use wait_for_replies (NOT send_message) when you need agent input — it blocks until they respond and returns their replies\n' +
     '- Use send_message ONLY for one-way announcements that need no response\n' +
