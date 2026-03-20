@@ -1,5 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
-import type { Message, Phase, Role, Session } from './types.js';
+import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
+import type { Message, Phase, Plan, Role, Session } from './types.js';
 
 const ADJECTIVES = [
   'swift', 'bold', 'calm', 'dark', 'eager', 'fair', 'glad', 'hard',
@@ -21,15 +23,55 @@ interface WaitingPoll {
   resolve: (messages: Message[]) => void;
 }
 
+interface WaitingForReplies {
+  toRole: Role;
+  expectedFrom: Set<string>;
+  afterTimestamp: number;
+  resolve: (messages: Message[]) => void;
+}
+
 const PLAN_PREFIX =
   '[PLAN MODE - DO NOT WRITE CODE]\n' +
   'Discuss design, raise concerns, ask questions, propose approaches only.\n' +
   'No code snippets, no implementation details.\n\n---\n';
 
+const DATA_DIR = join(dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1')), '..', 'data');
+const DATA_FILE = join(DATA_DIR, 'sessions.json');
+
 export class SessionStore {
   private sessions = new Map<string, Session>();
   private codewords = new Map<string, string>(); // codeword → sessionId
   private waiters = new Map<string, WaitingPoll[]>();
+  private replyWaiters = new Map<string, WaitingForReplies[]>();
+
+  constructor() {
+    this.load();
+  }
+
+  private load(): void {
+    try {
+      const raw = readFileSync(DATA_FILE, 'utf-8');
+      const list: Session[] = JSON.parse(raw);
+      for (const s of list) {
+        this.sessions.set(s.id, s);
+        this.codewords.set(s.codeword, s.id);
+        this.waiters.set(s.id, []);
+      }
+      console.log(`Loaded ${list.length} session(s) from disk.`);
+    } catch {
+      // No file yet or corrupt — start fresh
+    }
+  }
+
+  private save(): void {
+    try {
+      mkdirSync(DATA_DIR, { recursive: true });
+      const list = Array.from(this.sessions.values());
+      writeFileSync(DATA_FILE, JSON.stringify(list, null, 2));
+    } catch (err) {
+      console.error('Failed to persist sessions:', err);
+    }
+  }
 
   private generateCodeword(): string {
     for (let i = 0; i < 100; i++) {
@@ -49,13 +91,14 @@ export class SessionStore {
       codeword,
       phase: 'planning',
       feature,
-      designDoc: '',
+      plan: { overview: '', roles: {} },
       messages: [],
       joinedRoles: [],
     };
     this.sessions.set(id, session);
     this.codewords.set(codeword, id);
     this.waiters.set(id, []);
+    this.save();
     return session;
   }
 
@@ -74,6 +117,7 @@ export class SessionStore {
 
     if (!session.joinedRoles.includes(role)) {
       session.joinedRoles.push(role);
+      this.save();
     }
 
     const instructions =
@@ -111,6 +155,7 @@ export class SessionStore {
     };
 
     session.messages.push(message);
+    this.save();
     this.notifyWaiters(sessionId, message);
     return message;
   }
@@ -154,6 +199,7 @@ export class SessionStore {
   }
 
   private notifyWaiters(sessionId: string, message: Message): void {
+    // Notify single-role waiters
     const list = this.waiters.get(sessionId) ?? [];
     const toNotify = list.filter(
       (w) => message.to === w.role || message.to === 'all',
@@ -165,6 +211,77 @@ export class SessionStore {
       const msgs = this.getMessagesSince(session, waiter.role, waiter.after);
       waiter.resolve(msgs);
     }
+
+    // Notify multi-role reply waiters
+    const rList = this.replyWaiters.get(sessionId) ?? [];
+    for (let i = rList.length - 1; i >= 0; i--) {
+      const rw = rList[i];
+      if (message.to !== rw.toRole && message.to !== 'all') continue;
+      rw.expectedFrom.delete(message.from);
+      if (rw.expectedFrom.size === 0) {
+        rList.splice(i, 1);
+        const session = this.sessions.get(sessionId)!;
+        const msgs = session.messages.filter(
+          (m) => (m.to === rw.toRole || m.to === 'all') && m.timestamp >= rw.afterTimestamp,
+        );
+        rw.resolve(msgs);
+      }
+    }
+  }
+
+  waitForRepliesFrom(
+    sessionId: string,
+    toRole: Role,
+    expectedFrom: string[],
+    timeoutMs: number,
+    afterTimestamp?: number,
+  ): Promise<Message[]> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return Promise.reject(new Error(`Session not found: ${sessionId}`));
+
+    const cutoff = afterTimestamp ?? Date.now();
+    const remaining = new Set(expectedFrom);
+
+    // Check if any of the expected roles already sent messages since the cutoff
+    for (const msg of session.messages) {
+      if (msg.timestamp >= cutoff && (msg.to === toRole || msg.to === 'all')) {
+        remaining.delete(msg.from);
+      }
+    }
+    if (remaining.size === 0) {
+      const msgs = session.messages.filter(
+        (m) => (m.to === toRole || m.to === 'all') && m.timestamp >= cutoff,
+      );
+      return Promise.resolve(msgs);
+    }
+
+    return new Promise<Message[]>((resolve) => {
+      const waiter: WaitingForReplies = {
+        toRole,
+        expectedFrom: remaining,
+        afterTimestamp: cutoff,
+        resolve,
+      };
+      const list = this.replyWaiters.get(sessionId) ?? [];
+      list.push(waiter);
+      this.replyWaiters.set(sessionId, list);
+
+      setTimeout(() => {
+        const current = this.replyWaiters.get(sessionId) ?? [];
+        const idx = current.indexOf(waiter);
+        if (idx !== -1) {
+          current.splice(idx, 1);
+          // Resolve with whatever we have so far
+          const session = this.sessions.get(sessionId);
+          const msgs = session
+            ? session.messages.filter(
+                (m) => (m.to === toRole || m.to === 'all') && m.timestamp >= waiter.afterTimestamp,
+              )
+            : [];
+          resolve(msgs);
+        }
+      }, timeoutMs);
+    });
   }
 
   setPhase(sessionId: string, phase: Phase): void {
@@ -172,28 +289,49 @@ export class SessionStore {
     if (!session) throw new Error(`Session not found: ${sessionId}`);
 
     session.phase = phase;
+    this.save();
 
     if (phase === 'implementing') {
       const roles = session.joinedRoles.filter((r) => r !== 'coordinator');
-      const designSnippet = session.designDoc || '(no design doc yet)';
-      const content =
-        `[IMPLEMENTATION MODE]\n` +
-        `Planning is complete. Agreed design:\n\n${designSnippet}\n\n---\n` +
-        `Proceed with implementation.`;
+      const overview = session.plan.overview || '(no overview)';
 
       for (const role of roles) {
+        const roleSection = session.plan.roles[role] || '(no specific tasks assigned)';
+        const content =
+          `[IMPLEMENTATION MODE]\n` +
+          `Planning is complete.\n\n` +
+          `## Overview\n${overview}\n\n` +
+          `## Your tasks (${role})\n${roleSection}\n\n---\n` +
+          `Proceed with implementation.`;
         this.addMessage(sessionId, 'coordinator', role, content);
       }
     }
   }
 
-  updateDesignDoc(sessionId: string, designDoc: string): void {
+  updatePlan(sessionId: string, overview: string, roles: Record<string, string>): void {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session not found: ${sessionId}`);
-    session.designDoc = designDoc;
+    session.plan = { overview, roles };
+    this.save();
+  }
+
+  updateRolePlan(sessionId: string, role: Role, content: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`Session not found: ${sessionId}`);
+    session.plan.roles[role] = content;
+    this.save();
   }
 
   getSession(sessionId: string): Session | undefined {
     return this.sessions.get(sessionId);
+  }
+
+  listSessions(): { codeword: string; feature: string; phase: Phase; roles: Role[] }[] {
+    return Array.from(this.sessions.values()).map((s) => ({
+      codeword: s.codeword,
+      feature: s.feature,
+      phase: s.phase,
+      roles: s.joinedRoles,
+    }));
   }
 }

@@ -4,14 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Feature Planner</title>
-  <script type="importmap">
-  {
-    "imports": {
-      "relaxjs/html": "/node_modules/relaxjs/dist/html/index.mjs",
-      "relaxjs/http": "/node_modules/relaxjs/dist/http/index.mjs"
-    }
-  }
-  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -176,10 +168,61 @@
 
     .msg-content {
       font-size: 14px;
-      white-space: pre-wrap;
       word-break: break-word;
       line-height: 1.55;
     }
+    .msg-content p { margin: 0 0 8px; }
+    .msg-content p:last-child { margin-bottom: 0; }
+    .msg-content h1, .msg-content h2, .msg-content h3 {
+      color: #f0f6fc;
+      margin: 12px 0 6px;
+      line-height: 1.3;
+    }
+    .msg-content h1 { font-size: 18px; }
+    .msg-content h2 { font-size: 16px; }
+    .msg-content h3 { font-size: 14px; }
+    .msg-content ul, .msg-content ol { margin: 4px 0 8px 20px; }
+    .msg-content li { margin-bottom: 2px; }
+    .msg-content code {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: 'Consolas', 'Fira Code', monospace;
+      font-size: 13px;
+    }
+    .msg-content pre {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin: 6px 0;
+      overflow-x: auto;
+    }
+    .msg-content pre code {
+      border: none;
+      padding: 0;
+      background: none;
+    }
+    .msg-content blockquote {
+      border-left: 3px solid #388bfd;
+      padding-left: 12px;
+      margin: 6px 0;
+      color: #8b949e;
+    }
+    .msg-content hr {
+      border: none;
+      border-top: 1px solid #30363d;
+      margin: 8px 0;
+    }
+    .msg-content a { color: #79c0ff; }
+    .msg-content table { border-collapse: collapse; margin: 6px 0; }
+    .msg-content th, .msg-content td {
+      border: 1px solid #30363d;
+      padding: 4px 10px;
+      font-size: 13px;
+    }
+    .msg-content th { background: #161b22; color: #f0f6fc; }
 
     .msg-time { font-size: 10px; color: #8b949e; margin-top: 5px; }
 
@@ -190,19 +233,12 @@
     }
     .msg-coordinator .msg-from { color: #79c0ff; }
 
-    .msg-backend {
-      background: #1a2e22;
-      border: 1px solid #3fb95033;
-      align-self: flex-end;
-    }
-    .msg-backend .msg-from { color: #56d364; }
-
-    .msg-frontend {
-      background: #28203d;
-      border: 1px solid #bc8cff33;
+    .msg-user {
+      background: #1a2e2e;
+      border: 1px solid #2ea04333;
       align-self: flex-start;
     }
-    .msg-frontend .msg-from { color: #d2a8ff; }
+    .msg-user .msg-from { color: #58d5ba; }
 
     .msg-system {
       background: #1c2128;
@@ -213,12 +249,9 @@
     }
     .msg-system .msg-from { color: #8b949e; }
 
-    .msg-other {
-      background: #21262d;
-      border: 1px solid #30363d;
-      align-self: flex-start;
+    .msg-role-dynamic {
+      align-self: flex-end;
     }
-    .msg-other .msg-from { color: #e3b341; }
 
     /* ── Input bar ── */
     .input-bar {
@@ -256,22 +289,59 @@
       font-weight: 600;
     }
 
-    #design-doc {
-      flex: 1;
+    .plan-textarea {
       resize: none;
-      min-height: 220px;
+      min-height: 100px;
       font-size: 13px;
       font-family: 'Consolas', 'Fira Code', monospace;
       line-height: 1.55;
     }
 
-    .design-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    #plan-overview { min-height: 80px; }
+
+    .role-plan-section { margin-bottom: 8px; }
+    .role-plan-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #79c0ff;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+    }
+
+    .plan-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
     .divider { height: 1px; background: #30363d; flex-shrink: 0; }
 
     #joined-roles { font-size: 13px; color: #8b949e; line-height: 1.8; }
 
     .copy-hint { font-size: 11px; color: #8b949e; text-align: center; margin-top: 4px; }
+
+    /* ── Join snippet ── */
+    .join-snippet {
+      position: relative;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 10px 36px 10px 12px;
+      font-family: 'Consolas', 'Fira Code', monospace;
+      font-size: 12px;
+      color: #79c0ff;
+      white-space: pre-wrap;
+      word-break: break-all;
+      line-height: 1.5;
+      cursor: pointer;
+    }
+    .join-snippet:hover { border-color: #388bfd; }
+    .join-snippet .placeholder { color: #f0883e; font-weight: 700; }
+    .copy-icon {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      font-size: 14px;
+      opacity: .5;
+    }
+    .join-snippet:hover .copy-icon { opacity: 1; }
 
     /* ── Spinner ── */
     .spinner {
@@ -286,6 +356,37 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ── Thinking indicator ── */
+    .thinking-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: #1c2d45;
+      border: 1px solid #388bfd33;
+      align-self: flex-start;
+      max-width: 88%;
+      font-size: 13px;
+      color: #79c0ff;
+    }
+    .thinking-dots {
+      display: inline-flex;
+      gap: 3px;
+    }
+    .thinking-dots span {
+      width: 6px; height: 6px;
+      background: #79c0ff;
+      border-radius: 50%;
+      animation: blink 1.4s infinite both;
+    }
+    .thinking-dots span:nth-child(2) { animation-delay: .2s; }
+    .thinking-dots span:nth-child(3) { animation-delay: .4s; }
+    @keyframes blink {
+      0%, 80%, 100% { opacity: .2; }
+      40% { opacity: 1; }
+    }
+
     /* ── Scrollbars ── */
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -293,6 +394,8 @@
   </style>
 </head>
 <body>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
 <!-- ── Setup screen ── -->
 <div id="setup">
@@ -312,6 +415,16 @@
     </div>
 
     <button class="btn-primary" id="start-btn">Start Session</button>
+
+    <div class="divider" style="height:1px;background:#30363d;margin:4px 0"></div>
+
+    <div class="field">
+      <label>Or resume an existing session</label>
+      <select id="existing-sessions">
+        <option value="">Loading…</option>
+      </select>
+    </div>
+    <button class="btn-secondary" id="resume-btn" disabled>Resume Session</button>
   </div>
 </div>
 
@@ -328,7 +441,12 @@
 
     <!-- Left: thread + input -->
     <section class="thread-col">
-      <div id="messages"></div>
+      <div id="messages">
+        <div id="thinking-indicator" class="thinking-indicator hidden">
+          <div class="thinking-dots"><span></span><span></span><span></span></div>
+          Coordinator is thinking…
+        </div>
+      </div>
 
       <div class="input-bar">
         <div class="input-controls">
@@ -345,12 +463,16 @@
       </div>
     </section>
 
-    <!-- Right: design doc + info -->
+    <!-- Right: plan + info -->
     <aside class="design-col">
-      <span class="section-label">Design Doc</span>
-      <textarea id="design-doc" placeholder="Design decisions will appear here. Edit freely."></textarea>
-      <div class="design-actions">
-        <button class="btn-secondary" id="save-doc-btn">Save Doc</button>
+      <span class="section-label">Plan — Overview</span>
+      <textarea id="plan-overview" class="plan-textarea" placeholder="Shared context: goals, constraints, API contracts…"></textarea>
+
+      <span class="section-label">Plan — Per Role</span>
+      <div id="role-plans"></div>
+
+      <div class="plan-actions">
+        <button class="btn-secondary" id="save-plan-btn">Save Plan</button>
         <button class="btn-danger" id="end-planning-btn" disabled>End Planning</button>
       </div>
 
@@ -359,16 +481,38 @@
       <span class="section-label">Session</span>
       <div id="joined-roles">No agents joined yet.</div>
       <p class="copy-hint">Share the codeword ↑ with your Claude Code agents</p>
+
+      <div class="divider"></div>
+
+      <span class="section-label">Join Command</span>
+      <p class="copy-hint" style="text-align:left">Paste this into a Claude Code session — replace <strong>&lt;ROLE&gt;</strong> with the agent role:</p>
+      <div id="join-snippet" class="join-snippet" title="Click to copy">
+        <span class="copy-icon">📋</span>
+      </div>
     </aside>
 
   </div>
 </div>
 
-<script type="module">
-import { html }                       from 'relaxjs/html';
-import { configure, get, post, request } from 'relaxjs/http';
+<script>
+// ── Markdown config ─────────────────────────────────────────────
+marked.setOptions({ breaks: true, gfm: true });
 
-configure({ baseUrl: '', bearerTokenName: null });
+// ── HTTP helpers (replaces relaxjs/http) ───────────────────────
+async function api(url, options = {}) {
+  const res = await fetch(url, options);
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); } catch { json = text; }
+  return { ok: res.ok, status: res.status, data: json };
+}
+async function apiGet(url) { return api(url); }
+async function apiPost(url, body) {
+  return api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+}
+async function apiPatch(url, body) {
+  return api(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+}
 
 // ── State ──────────────────────────────────────────────────────
 let codeword = location.hash.slice(1) || null;
@@ -377,6 +521,7 @@ let coordinatorHistory = [];
 let renderedIds = new Set();
 let pollTimer = null;
 let isSending = false;
+let lastCoordinatorCheckTs = 0;
 
 // ── API key ────────────────────────────────────────────────────
 const $apikey = document.getElementById('apikey-input');
@@ -385,35 +530,70 @@ $apikey.addEventListener('input', () =>
   localStorage.setItem('feature-planner-apikey', $apikey.value.trim())
 );
 
-// ── Message template ───────────────────────────────────────────
-const msgTpl = html`<div class="msg msg-{{cls}}">
-  <div class="msg-header">
-    <span class="msg-from">{{from}}</span>
-    <span class="msg-arrow">→</span>
-    <span class="msg-to">{{to}}</span>
-  </div>
-  <div class="msg-content">{{content}}</div>
-  <div class="msg-time">{{time}}</div>
-</div>`;
+// ── Message rendering (replaces relaxjs/html template) ─────────
+// Palette for dynamic role colors (hue, fg-color, bg-color, border-color)
+const ROLE_COLORS = [
+  { fg: '#56d364', bg: '#1a2e22', border: '#3fb95033' },
+  { fg: '#d2a8ff', bg: '#28203d', border: '#bc8cff33' },
+  { fg: '#e3b341', bg: '#2d2a1d', border: '#e3b34133' },
+  { fg: '#f78166', bg: '#2d1f1a', border: '#f7816633' },
+  { fg: '#ff7b72', bg: '#2d1b1b', border: '#ff7b7233' },
+  { fg: '#7ee787', bg: '#1a2e22', border: '#7ee78733' },
+  { fg: '#a5d6ff', bg: '#1a2533', border: '#a5d6ff33' },
+  { fg: '#ffa657', bg: '#2d221a', border: '#ffa65733' },
+];
+const roleColorMap = new Map();
+let nextColorIdx = 0;
+
+function getRoleColor(role) {
+  if (!roleColorMap.has(role)) {
+    roleColorMap.set(role, ROLE_COLORS[nextColorIdx % ROLE_COLORS.length]);
+    nextColorIdx++;
+  }
+  return roleColorMap.get(role);
+}
 
 function roleClass(from) {
-  if (from === 'coordinator')          return 'coordinator';
-  if (from === '[system]')             return 'system';
-  if (from.startsWith('backend'))      return 'backend';
-  if (from.startsWith('frontend'))     return 'frontend';
-  return 'other';
+  if (!from)                 return 'system';
+  if (from === 'coordinator') return 'coordinator';
+  if (from === '[user]')      return 'user';
+  if (from === '[system]')    return 'system';
+  return 'role-dynamic';
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
 }
 
 function renderMessage(msg) {
-  const result = msgTpl({
-    cls:     roleClass(msg.from),
-    from:    msg.from,
-    to:      msg.to,
-    content: msg.content,
-    time:    new Date(msg.timestamp).toLocaleTimeString(),
-  });
   const container = document.getElementById('messages');
-  container.appendChild(result.fragment);
+  const div = document.createElement('div');
+  const cls = roleClass(msg.from);
+  div.className = `msg msg-${cls}`;
+
+  // Apply dynamic colors for non-fixed roles
+  if (cls === 'role-dynamic') {
+    const c = getRoleColor(msg.from);
+    div.style.background = c.bg;
+    div.style.border = `1px solid ${c.border}`;
+  }
+
+  div.innerHTML =
+    `<div class="msg-header">` +
+      `<span class="msg-from">${escapeHtml(msg.from || 'unknown')}</span>` +
+      `<span class="msg-arrow">→</span>` +
+      `<span class="msg-to">${escapeHtml(msg.to || 'unknown')}</span>` +
+    `</div>` +
+    `<div class="msg-content">${marked.parse(msg.content || '')}</div>` +
+    `<div class="msg-time">${new Date(msg.timestamp).toLocaleTimeString()}</div>`;
+
+  if (cls === 'role-dynamic') {
+    div.querySelector('.msg-from').style.color = getRoleColor(msg.from).fg;
+  }
+
+  container.appendChild(div);
   container.scrollTop = container.scrollHeight;
 }
 
@@ -424,41 +604,88 @@ document.getElementById('start-btn').addEventListener('click', async () => {
   const apiKey = $apikey.value.trim();
   if (!apiKey)  { alert('Enter your Anthropic API key.'); return; }
 
-  const res = await post('/session', JSON.stringify({ feature }));
-  if (!res.success) { alert('Failed to create session: ' + res.body); return; }
-  const { codeword: cw } = res.as();
-  codeword = cw;
-  location.hash = cw;
+  const res = await apiPost('/session', { feature });
+  if (!res.ok) { alert('Failed to create session: ' + JSON.stringify(res.data)); return; }
+  codeword = res.data.codeword;
+  location.hash = codeword;
   showApp();
   await loadState();
   startPolling();
 });
 
-// ── Auto-restore from hash ─────────────────────────────────────
-if (codeword) {
-  const res = await get(`/session/${codeword}/state`).catch(() => null);
-  if (res?.success) {
-    showApp();
-    await loadState();
-    startPolling();
-  } else {
-    location.hash = '';
-    codeword = null;
+// ── Load existing sessions into dropdown ────────────────────────
+(async () => {
+  const sel = document.getElementById('existing-sessions');
+  const btn = document.getElementById('resume-btn');
+  try {
+    const res = await apiGet('/sessions');
+    const sessions = res.ok ? res.data : [];
+    sel.innerHTML = sessions.length
+      ? '<option value="">— select —</option>' +
+        sessions.map(s =>
+          `<option value="${s.codeword}">${s.codeword} — ${s.feature} (${s.phase})</option>`
+        ).join('')
+      : '<option value="">No sessions found</option>';
+    sel.addEventListener('change', () => { btn.disabled = !sel.value; });
+  } catch {
+    sel.innerHTML = '<option value="">Failed to load</option>';
   }
-}
+})();
+
+document.getElementById('resume-btn').addEventListener('click', () => {
+  const sel = document.getElementById('existing-sessions');
+  const apiKey = document.getElementById('apikey-input').value.trim();
+  if (!apiKey) { alert('Enter your Anthropic API key.'); return; }
+  if (!sel.value) return;
+  codeword = sel.value;
+  location.hash = codeword;
+  showApp();
+  loadState();
+  startPolling();
+});
+
+// ── Auto-restore from hash ─────────────────────────────────────
+(async () => {
+  if (codeword) {
+    const res = await apiGet(`/session/${codeword}/state`).catch(() => null);
+    if (res?.ok) {
+      showApp();
+      await loadState();
+      startPolling();
+    } else {
+      location.hash = '';
+      codeword = null;
+    }
+  }
+})();
 
 // ── Screen helpers ─────────────────────────────────────────────
 function showApp() {
   document.getElementById('setup').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('codeword-badge').textContent = `⌨ ${codeword}`;
+  updateJoinSnippet();
+}
+
+function updateJoinSnippet() {
+  const el = document.getElementById('join-snippet');
+  const host = location.origin;
+  el.innerHTML = `<span class="copy-icon">📋</span>` +
+    `Use the MCP tool "join_session" with codeword "${codeword}" and role <span class="placeholder">&lt;ROLE&gt;</span>`;
 }
 
 // ── State refresh ──────────────────────────────────────────────
 async function loadState() {
-  const res = await get(`/session/${codeword}/state`).catch(() => null);
-  if (!res?.success) return;
-  session = res.as();
+  const res = await apiGet(`/session/${codeword}/state`).catch(() => null);
+  if (!res?.ok) {
+    if (res?.status === 404 && pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+      appendLog('Session not found — server may have restarted. Please create a new session.');
+    }
+    return;
+  }
+  session = res.data;
   applyState();
 }
 
@@ -493,18 +720,38 @@ function applyState() {
     }
   }
 
-  // Design doc (don't overwrite if user is editing)
-  const docEl = document.getElementById('design-doc');
-  if (document.activeElement !== docEl) {
-    docEl.value = session.designDoc || '';
+  // Plan overview (don't overwrite if user is editing)
+  const overviewEl = document.getElementById('plan-overview');
+  if (document.activeElement !== overviewEl) {
+    overviewEl.value = session.plan?.overview || '';
   }
 
-  // Render new messages
-  for (const msg of session.messages) {
-    if (!renderedIds.has(msg.id)) {
-      renderedIds.add(msg.id);
-      renderMessage(msg);
+  // Per-role plan sections
+  const rolePlansEl = document.getElementById('role-plans');
+  const agentRoles = session.joinedRoles.filter(r => r !== 'coordinator');
+  for (const role of agentRoles) {
+    let section = document.getElementById(`role-plan-${role}`);
+    if (!section) {
+      section = document.createElement('div');
+      section.className = 'role-plan-section';
+      section.innerHTML =
+        `<div class="role-plan-label">${escapeHtml(role)}</div>` +
+        `<textarea id="role-plan-${role}" class="plan-textarea" placeholder="Tasks for ${escapeHtml(role)}…"></textarea>`;
+      rolePlansEl.appendChild(section);
     }
+    const ta = section.querySelector('textarea');
+    if (ta && document.activeElement !== ta) {
+      ta.value = session.plan?.roles?.[role] || '';
+    }
+  }
+
+  // Render new messages — skip coordinator→agent messages (those are handled
+  // by the coordinator loop and rendered locally as coordinator text blocks)
+  for (const msg of session.messages) {
+    if (renderedIds.has(msg.id)) continue;
+    if (msg.from === 'coordinator') continue;
+    renderedIds.add(msg.id);
+    renderMessage(msg);
   }
 }
 
@@ -523,24 +770,36 @@ document.getElementById('codeword-badge').addEventListener('click', () => {
   setTimeout(() => badge.textContent = prev, 1500);
 });
 
-// ── Save design doc ────────────────────────────────────────────
-document.getElementById('save-doc-btn').addEventListener('click', saveDesignDoc);
+// ── Join snippet copy ───────────────────────────────────────────
+document.getElementById('join-snippet').addEventListener('click', () => {
+  const text = `Use the MCP tool "join_session" with codeword "${codeword}" and role <ROLE>`;
+  navigator.clipboard.writeText(text);
+  const el = document.getElementById('join-snippet');
+  const prev = el.innerHTML;
+  el.innerHTML = '<span class="copy-icon">✓</span> Copied!';
+  setTimeout(() => el.innerHTML = prev, 1500);
+});
 
-async function saveDesignDoc() {
-  const designDoc = document.getElementById('design-doc').value;
-  await request(`/session/${codeword}/design`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ designDoc }),
-  });
-  if (session) session.designDoc = designDoc;
+// ── Save plan ───────────────────────────────────────────────────
+document.getElementById('save-plan-btn').addEventListener('click', savePlan);
+
+async function savePlan() {
+  const overview = document.getElementById('plan-overview').value;
+  const roles = {};
+  const agentRoles = (session?.joinedRoles || []).filter(r => r !== 'coordinator');
+  for (const role of agentRoles) {
+    const ta = document.querySelector(`#role-plan-${role}`);
+    if (ta) roles[role] = ta.value;
+  }
+  await apiPatch(`/session/${codeword}/plan`, { overview, roles });
+  if (session) session.plan = { overview, roles };
 }
 
 // ── End planning ───────────────────────────────────────────────
 document.getElementById('end-planning-btn').addEventListener('click', async () => {
   if (!confirm('End planning and switch all agents to implementation mode?')) return;
-  await saveDesignDoc();
-  await post(`/session/${codeword}/phase`, JSON.stringify({ phase: 'implementing' }));
+  await savePlan();
+  await apiPost(`/session/${codeword}/phase`, { phase: 'implementing' });
   await loadState();
 });
 
@@ -565,6 +824,12 @@ async function sendToCoordinator() {
   sendBtn.disabled = true;
   sendBtn.innerHTML = '<span class="spinner"></span>Thinking…';
 
+  // Post to the session and let loadState() render it (avoids double-render)
+  await apiPost(`/session/${codeword}/message`, {
+    from: '[user]', to: 'coordinator', content: text,
+  });
+  await loadState();
+
   coordinatorHistory.push({ role: 'user', content: text });
 
   try {
@@ -581,25 +846,50 @@ async function sendToCoordinator() {
 const COORDINATOR_TOOLS = [
   {
     name: 'send_message',
-    description: 'Send a message to one or all agents in the session.',
+    description: 'Send a one-way message to a specific agent. Use this only for announcements or instructions that do NOT need a response. For messages that need agent input, use wait_for_replies instead.',
     input_schema: {
       type: 'object',
       properties: {
-        to:      { type: 'string', description: 'Target role or "all"' },
+        to:      { type: 'string', description: 'Target role label (e.g. "backend", "frontend"). Avoid "all" — address specific agents.' },
         content: { type: 'string', description: 'Message content' },
       },
       required: ['to', 'content'],
     },
   },
   {
-    name: 'update_design_doc',
-    description: 'Overwrite the shared design document with synthesized decisions.',
+    name: 'wait_for_replies',
+    description: 'Send a message to one or more agents and BLOCK until all of them reply (up to 2 minutes). Returns the collected replies as text. Use this whenever you need agent input before continuing — it keeps the conversation flowing without halting.',
     input_schema: {
       type: 'object',
       properties: {
-        designDoc: { type: 'string', description: 'Full updated design document' },
+        to:      { type: 'array', items: { type: 'string' }, description: 'List of target role labels to send to and wait for replies from' },
+        content: { type: 'string', description: 'Message content to send to all listed roles' },
       },
-      required: ['designDoc'],
+      required: ['to', 'content'],
+    },
+  },
+  {
+    name: 'get_new_messages',
+    description: 'Check for any new messages from agents since the coordinator last checked. Returns messages addressed to the coordinator. Use this to see if agents have sent anything since your last action.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'update_plan',
+    description: 'Update the implementation plan. Provide an overview (shared context, goals, API contracts) and per-role sections (specific tasks for each agent). Each role gets ONLY their section when implementation starts.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        overview: { type: 'string', description: 'Shared overview: goals, constraints, interfaces, API contracts' },
+        roles: {
+          type: 'object',
+          description: 'Per-role plan sections. Keys are role labels, values are markdown task lists for that role.',
+          additionalProperties: { type: 'string' },
+        },
+      },
+      required: ['overview', 'roles'],
     },
   },
   {
@@ -618,73 +908,146 @@ const COORDINATOR_TOOLS = [
 async function executeTool(name, input) {
   switch (name) {
     case 'send_message': {
-      const res = await post(
+      const res = await apiPost(
         `/session/${codeword}/message`,
-        JSON.stringify({ from: 'coordinator', to: input.to || 'all', content: input.content })
+        { from: 'coordinator', to: input.to || 'all', content: input.content }
       );
-      return res.success ? 'Message sent.' : `Error: ${res.body}`;
+      lastCoordinatorCheckTs = Date.now();
+      await loadState();
+      return res.ok ? 'Message sent.' : `Error: ${JSON.stringify(res.data)}`;
     }
-    case 'update_design_doc': {
-      const designDoc = input.designDoc ?? '';
-      await request(`/session/${codeword}/design`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ designDoc }),
-      });
-      const docEl = document.getElementById('design-doc');
-      if (document.activeElement !== docEl) docEl.value = designDoc;
-      if (session) session.designDoc = designDoc;
-      return 'Design doc updated.';
+    case 'wait_for_replies': {
+      const toRoles = input.to || [];
+      if (toRoles.length === 0) return 'Error: to (array of roles) is required';
+      const res = await apiPost(
+        `/session/${codeword}/wait-for-replies`,
+        { from: 'coordinator', to: toRoles, content: input.content }
+      );
+      lastCoordinatorCheckTs = Date.now();
+      await loadState();
+      if (!res.ok) return `Error: ${JSON.stringify(res.data)}`;
+      const replies = res.data.replies || [];
+      if (replies.length === 0) return '(no replies received within timeout)';
+      return replies.map(r => `[${r.from}]: ${r.content}`).join('\n\n---\n\n');
+    }
+    case 'get_new_messages': {
+      const res = await apiGet(
+        `/session/${codeword}/messages-for?role=coordinator&since=${lastCoordinatorCheckTs}`
+      );
+      lastCoordinatorCheckTs = Date.now();
+      await loadState();
+      if (!res.ok) return `Error: ${JSON.stringify(res.data)}`;
+      const msgs = res.data.messages || [];
+      if (msgs.length === 0) return '(no new messages from agents)';
+      return msgs.map(m => `[${m.from}]: ${m.content}`).join('\n\n---\n\n');
+    }
+    case 'update_plan': {
+      const overview = input.overview ?? '';
+      const roles = input.roles ?? {};
+      await apiPatch(`/session/${codeword}/plan`, { overview, roles });
+      // Update local UI
+      const overviewEl = document.getElementById('plan-overview');
+      if (overviewEl && document.activeElement !== overviewEl) overviewEl.value = overview;
+      for (const [role, content] of Object.entries(roles)) {
+        const ta = document.querySelector(`#role-plan-${role}`);
+        if (ta && document.activeElement !== ta) ta.value = content;
+      }
+      if (session) session.plan = { overview, roles };
+      await loadState();
+      return 'Plan updated.';
     }
     case 'set_phase': {
-      await saveDesignDoc();
-      const res = await post(
+      await savePlan();
+      const res = await apiPost(
         `/session/${codeword}/phase`,
-        JSON.stringify({ phase: 'implementing' })
+        { phase: 'implementing' }
       );
-      return res.success ? 'Phase set to implementing.' : `Error: ${res.body}`;
+      return res.ok ? 'Phase set to implementing.' : `Error: ${JSON.stringify(res.data)}`;
     }
     default:
       return `Unknown tool: ${name}`;
   }
 }
 
+// ── Thinking indicator ──────────────────────────────────────────
+function showThinking(label) {
+  const el = document.getElementById('thinking-indicator');
+  el.textContent = '';
+  const dots = document.createElement('div');
+  dots.className = 'thinking-dots';
+  dots.innerHTML = '<span></span><span></span><span></span>';
+  el.appendChild(dots);
+  el.appendChild(document.createTextNode(label || 'Coordinator is thinking…'));
+  el.classList.remove('hidden');
+  const container = document.getElementById('messages');
+  container.appendChild(el);
+  container.scrollTop = container.scrollHeight;
+}
+
+function hideThinking() {
+  document.getElementById('thinking-indicator').classList.add('hidden');
+}
+
 // ── Coordinator loop ───────────────────────────────────────────
 async function runCoordinatorLoop(apiKey) {
+  const agentRoles = session?.joinedRoles?.filter(r => r !== 'coordinator') || [];
+  const planSummary = session?.plan
+    ? `Overview: ${session.plan.overview || '(empty)'}\n` +
+      agentRoles.map(r => `${r}: ${session.plan.roles?.[r] || '(empty)'}`).join('\n')
+    : '(no plan yet)';
+
   const systemPrompt =
     'You are a technical planning coordinator facilitating a design session ' +
     'between one or more developer agents.\n\n' +
     'Your responsibilities:\n' +
-    '- Ask targeted questions to surface design decisions\n' +
-    '- Identify conflicts or gaps between proposals\n' +
-    '- Synthesize agreements into the design doc via update_design_doc\n' +
-    '- Use send_message to engage agents\n' +
+    '- Ask each agent TARGETED questions about their specific domain\n' +
+    '- Identify interfaces between roles (API contracts, shared state, events)\n' +
+    '- Synthesize into a STRUCTURED PLAN via update_plan with:\n' +
+    '  - overview: shared context (goals, constraints, API contracts between roles)\n' +
+    '  - roles: per-role task lists (each agent only sees their own section + overview)\n' +
     '- Flag unresolved questions back to the human\n' +
     '- Never write code or suggest implementation details yourself\n\n' +
+    'CRITICAL communication rules:\n' +
+    '- Use wait_for_replies (NOT send_message) when you need agent input — it blocks until they respond and returns their replies\n' +
+    '- Use send_message ONLY for one-way announcements that need no response\n' +
+    '- Always address SPECIFIC agents by role name — NEVER send to "all"\n' +
+    '- When you receive a reply from one agent, DO NOT automatically forward it to the others. ' +
+    'Evaluate whether the reply contains information another agent actually needs (e.g. an API contract, a shared interface decision, a dependency). ' +
+    'If it does, extract ONLY the relevant parts and send a targeted summary to the specific agent(s) who need it. ' +
+    'If the reply is only relevant to the sender\'s own domain, do not distribute it at all.\n' +
+    '- Use get_new_messages to check if agents have sent anything since your last action\n' +
+    '- Do NOT repeat questions agents have already answered — read their replies carefully\n\n' +
+    'PLAN STRUCTURE:\n' +
+    '- The overview should contain what ALL agents need: goals, constraints, shared interfaces/contracts\n' +
+    '- Each role section should contain ONLY that agent\'s specific tasks, responsibilities, and implementation notes\n' +
+    '- When implementation starts, each agent receives ONLY the overview + their own section\n\n' +
     `Feature: ${session?.feature ?? ''}\n` +
-    `Joined agents: ${session?.joinedRoles?.filter(r => r !== 'coordinator').join(', ') || 'none yet'}\n\n` +
-    `Current design doc:\n${session?.designDoc || '(empty)'}`;
+    `Joined agents: ${agentRoles.join(', ') || 'none yet'}\n\n` +
+    `Current plan:\n${planSummary}`;
+
+  showThinking('Coordinator is thinking…');
 
   while (true) {
-    const res = await post('/proxy/claude', JSON.stringify({
+    const res = await apiPost('/proxy/claude', {
       apiKey,
       model:      'claude-sonnet-4-20250514',
       max_tokens: 4096,
       system:     systemPrompt,
       messages:   coordinatorHistory,
       tools:      COORDINATOR_TOOLS,
-    }));
+    });
 
-    if (!res.success) {
+    if (!res.ok) {
+      hideThinking();
       renderMessage({
         id: crypto.randomUUID(), from: '[system]', to: 'coordinator',
-        content: `Claude API error ${res.statusCode}: ${JSON.stringify(res.body)}`,
+        content: `Claude API error ${res.status}: ${JSON.stringify(res.data)}`,
         timestamp: Date.now(),
       });
       break;
     }
 
-    const data = res.as();
+    const data = res.data;
     coordinatorHistory.push({ role: 'assistant', content: data.content });
 
     // Show text to the user in the thread
@@ -700,7 +1063,19 @@ async function runCoordinatorLoop(apiKey) {
     }
 
     const toolUses = data.content.filter(b => b.type === 'tool_use');
-    if (data.stop_reason === 'end_turn' || toolUses.length === 0) break;
+    if (data.stop_reason === 'end_turn' || toolUses.length === 0) {
+      hideThinking();
+      break;
+    }
+
+    // Update indicator based on what the coordinator is doing
+    const waitingFor = toolUses.find(b => b.name === 'wait_for_replies');
+    if (waitingFor) {
+      const roles = (waitingFor.input?.to || []).join(', ');
+      showThinking(`Waiting for replies from ${roles}…`);
+    } else {
+      showThinking('Coordinator is thinking…');
+    }
 
     // Execute tools and feed results back
     const toolResults = await Promise.all(
@@ -711,6 +1086,8 @@ async function runCoordinatorLoop(apiKey) {
       }))
     );
     coordinatorHistory.push({ role: 'user', content: toolResults });
+
+    showThinking('Coordinator is thinking…');
   }
 }
 </script>

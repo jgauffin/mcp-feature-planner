@@ -55,13 +55,26 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'get_session_state',
-    description: 'Get the full session state including phase, design doc, joined roles, and all messages.',
+    description: 'Get the full session state including phase, plan, joined roles, and all messages.',
     inputSchema: {
       type: 'object',
       properties: {
         codeword: { type: 'string' },
       },
       required: ['codeword'],
+    },
+  },
+  {
+    name: 'get_my_plan',
+    description:
+      'Get the plan section assigned to your role, plus the shared overview. Use this during implementation to re-check what you should be working on.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        codeword: { type: 'string' },
+        role: { type: 'string', description: 'Your role label' },
+      },
+      required: ['codeword', 'role'],
     },
   },
   {
@@ -76,6 +89,26 @@ const TOOL_DEFINITIONS = [
         question: { type: 'string', description: 'Your question or request for the coordinator' },
       },
       required: ['codeword', 'from', 'question'],
+    },
+  },
+  {
+    name: 'wait_for_replies',
+    description:
+      'Send a message to multiple roles and block until all of them have replied (up to 2 minutes). ' +
+      'Returns the collected replies. Use this instead of send_message + get_messages when you need input from specific roles before continuing.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        codeword: { type: 'string' },
+        from: { type: 'string', description: 'Your role label (sender)' },
+        to: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'List of role labels to send to and wait for replies from',
+        },
+        content: { type: 'string', description: 'Message content to send to all listed roles' },
+      },
+      required: ['codeword', 'from', 'to', 'content'],
     },
   },
 ];
@@ -106,11 +139,15 @@ export function createMcpServer(store: SessionStore): McpServer {
     try {
       switch (name) {
         case 'join_session': {
+          if (!a['codeword'] || !a['role'])
+            return text('Error: codeword and role are required');
           const result = store.joinSession(a['codeword'], a['role']);
           return text(JSON.stringify(result, null, 2));
         }
 
         case 'send_message': {
+          if (!a['from'] || !a['to'] || !a['content'])
+            return text('Error: from, to, and content are required');
           const session = store.getByCodeword(a['codeword']);
           if (!session) return text(`Error: session not found: ${a['codeword']}`);
           store.addMessage(session.id, a['from'], a['to'], a['content']);
@@ -131,14 +168,61 @@ export function createMcpServer(store: SessionStore): McpServer {
           return text(JSON.stringify(session, null, 2));
         }
 
+        case 'get_my_plan': {
+          if (!a['codeword'] || !a['role'])
+            return text('Error: codeword and role are required');
+          const session = store.getByCodeword(a['codeword']);
+          if (!session) return text(`Error: session not found: ${a['codeword']}`);
+          const overview = session.plan.overview || '(no overview yet)';
+          const roleSection = session.plan.roles[a['role']] || '(no tasks assigned to your role yet)';
+          return text(
+            `## Overview\n${overview}\n\n## Your tasks (${a['role']})\n${roleSection}`,
+          );
+        }
+
         case 'ask_coordinator': {
+          if (!a['from'] || !a['question'])
+            return text('Error: from and question are required');
           const session = store.getByCodeword(a['codeword']);
           if (!session) return text(`Error: session not found: ${a['codeword']}`);
           const beforeId = session.messages.at(-1)?.id ?? null;
           store.addMessage(session.id, a['from'], 'coordinator', a['question']);
-          const replies = await store.waitForMessages(session.id, a['from'], beforeId, 120_000);
-          const reply = replies[0];
+
+          // Wait for a reply specifically from the coordinator, ignoring other senders
+          const deadline = Date.now() + 120_000;
+          let afterId = beforeId;
+          let reply: { content: string } | undefined;
+          while (Date.now() < deadline) {
+            const remaining = Math.max(deadline - Date.now(), 1000);
+            const replies = await store.waitForMessages(session.id, a['from'], afterId, remaining);
+            reply = replies.find((r) => r.from === 'coordinator');
+            if (reply) break;
+            if (replies.length > 0) afterId = replies[replies.length - 1].id;
+            else break; // timeout — no more messages
+          }
           return text(reply ? reply.content : '(no reply within 2 minutes)');
+        }
+
+        case 'wait_for_replies': {
+          const toRoles = (args?.['to'] ?? []) as string[];
+          if (!a['from'] || !a['content'] || toRoles.length === 0)
+            return text('Error: from, to (array), and content are required');
+          const session = store.getByCodeword(a['codeword']);
+          if (!session) return text(`Error: session not found: ${a['codeword']}`);
+
+          // Capture timestamp BEFORE sending so fast replies aren't missed
+          const sentAt = Date.now();
+
+          // Send the message to each target role
+          for (const role of toRoles) {
+            store.addMessage(session.id, a['from'], role, a['content']);
+          }
+
+          // Wait until all target roles have replied
+          const replies = await store.waitForRepliesFrom(
+            session.id, a['from'], toRoles, 120_000, sentAt,
+          );
+          return text(JSON.stringify({ replies }, null, 2));
         }
 
         default:

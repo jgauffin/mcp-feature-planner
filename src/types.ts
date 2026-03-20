@@ -12,12 +12,17 @@ export interface Message {
   timestamp: number;
 }
 
+export interface Plan {
+  overview: string;                    // shared context: goals, constraints, API contracts
+  roles: Record<Role, string>;        // per-role plan section
+}
+
 export interface Session {
   id: string;
   codeword: string;
   phase: Phase;
   feature: string;
-  designDoc: string;
+  plan: Plan;
   messages: Message[];
   joinedRoles: Role[];
 }
