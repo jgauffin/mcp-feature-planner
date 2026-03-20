@@ -6,7 +6,7 @@ Multiple Claude Code agents working on the same feature will step on each other 
 
 A human facilitator creates a session, shares a codeword, and an AI coordinator takes over: it interviews each agent about their domain, surfaces conflicts between their approaches, negotiates API contracts, and synthesizes everything into a structured plan. Only when the facilitator is satisfied does it flip the switch and release agents to implement — each with a clear, non-overlapping task list.
 
-The user decides when the plan is complete and the coding coordinator can start.
+The mere human decides when the plan is complete and the coding coordinatation can start.
 
 ## What happens in a session
 
