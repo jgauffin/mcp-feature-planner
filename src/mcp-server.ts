@@ -39,7 +39,9 @@ const TOOL_DEFINITIONS = [
   {
     name: 'get_messages',
     description:
-      'Long-poll for messages directed at your role. Blocks up to 20 seconds then returns. Pass the `after` message ID from the last call to get only new messages. Call this in a loop to stay up to date.',
+      'Long-poll for messages directed at your role. Blocks up to 20 seconds then returns. ' +
+      'You MUST call this in a continuous loop for the entire session — never stop, even if it returns empty. ' +
+      'Pass the `after` message ID from the last response to get only new messages.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -159,6 +161,9 @@ export function createMcpServer(store: SessionStore): McpServer {
           if (!session) return text(`Error: session not found: ${a['codeword']}`);
           const after = a['after'] ?? null;
           const messages = await store.waitForMessages(session.id, a['role'], after, 20_000);
+          if (messages.length === 0) {
+            return text('No new messages yet. Call get_messages again to keep waiting.');
+          }
           return text(JSON.stringify({ messages }, null, 2));
         }
 

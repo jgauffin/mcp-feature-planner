@@ -120,12 +120,14 @@ export class SessionStore {
       `You have joined session "${codeword}" as: ${role}\n` +
       `Feature: ${session.feature}\n\n` +
       `PHASE: ${session.phase.toUpperCase()}\n\n` +
+      `IMPORTANT: You MUST call get_messages in a continuous loop for the entire session. ` +
+      `Never stop polling — even when get_messages returns no messages, call it again immediately. ` +
+      `The coordinator will send you questions and instructions through this channel.\n\n` +
       (session.phase === 'planning'
         ? `You are in PLAN MODE. Rules:\n` +
           `- Discuss design only — raise concerns, ask questions, propose approaches\n` +
           `- NO code, NO implementation details\n` +
-          `- Use send_message to communicate\n` +
-          `- Use get_messages(codeword, role) in a loop to receive messages\n` +
+          `- Use send_message to communicate, use get_messages to receive\n` +
           `- Use ask_coordinator(codeword, role, question) to block until the coordinator responds\n` +
           `- Stay in plan mode until you receive a [IMPLEMENTATION MODE] message\n`
         : `Planning is complete. Proceed with implementation.\n`);
