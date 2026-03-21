@@ -23,23 +23,24 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
-    name: 'send_message',
-    description: 'Send a message to another role or to all participants in the session.',
+    name: 'post_to_chat',
+    description:
+      'Post a message to the session chat. This is visible to the coordinator and all participants. ' +
+      'You cannot send private messages to specific agents — all communication goes through the coordinator.',
     inputSchema: {
       type: 'object',
       properties: {
         codeword: { type: 'string' },
         from: { type: 'string', description: 'Your role label' },
-        to: { type: 'string', description: 'Target role label or "all"' },
         content: { type: 'string', description: 'Message content' },
       },
-      required: ['codeword', 'from', 'to', 'content'],
+      required: ['codeword', 'from', 'content'],
     },
   },
   {
     name: 'get_messages',
     description:
-      'Long-poll for messages directed at your role. Blocks up to 20 seconds then returns. ' +
+      'Long-poll for messages directed at your role. Blocks up to 60 seconds then returns. ' +
       'You MUST call this in a continuous loop for the entire session — never stop, even if it returns empty. ' +
       'Pass the `after` message ID from the last response to get only new messages.',
     inputSchema: {
@@ -93,26 +94,6 @@ const TOOL_DEFINITIONS = [
       required: ['codeword', 'from', 'question'],
     },
   },
-  {
-    name: 'wait_for_replies',
-    description:
-      'Send a message to multiple roles and block until all of them have replied (up to 2 minutes). ' +
-      'Returns the collected replies. Use this instead of send_message + get_messages when you need input from specific roles before continuing.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        codeword: { type: 'string' },
-        from: { type: 'string', description: 'Your role label (sender)' },
-        to: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'List of role labels to send to and wait for replies from',
-        },
-        content: { type: 'string', description: 'Message content to send to all listed roles' },
-      },
-      required: ['codeword', 'from', 'to', 'content'],
-    },
-  },
 ];
 
 function text(content: string) {
@@ -147,12 +128,13 @@ export function createMcpServer(store: SessionStore): McpServer {
           return text(JSON.stringify(result, null, 2));
         }
 
-        case 'send_message': {
-          if (!a['from'] || !a['to'] || !a['content'])
-            return text('Error: from, to, and content are required');
+        case 'post_to_chat': {
+          if (!a['from'] || !a['content'])
+            return text('Error: from and content are required');
           const session = store.getByCodeword(a['codeword']);
           if (!session) return text(`Error: session not found: ${a['codeword']}`);
-          store.addMessage(session.id, a['from'], a['to'], a['content']);
+          // Agents can only post to the chat (addressed to coordinator) — no direct agent-to-agent messaging
+          store.addMessage(session.id, a['from'], 'coordinator', a['content']);
           return text(JSON.stringify({ ok: true }));
         }
 
@@ -160,7 +142,7 @@ export function createMcpServer(store: SessionStore): McpServer {
           const session = store.getByCodeword(a['codeword']);
           if (!session) return text(`Error: session not found: ${a['codeword']}`);
           const after = a['after'] ?? null;
-          const messages = await store.waitForMessages(session.id, a['role'], after, 20_000);
+          const messages = await store.waitForMessages(session.id, a['role'], after, 60_000);
           if (messages.length === 0) {
             return text('No new messages yet. Call get_messages again to keep waiting.');
           }
@@ -208,27 +190,6 @@ export function createMcpServer(store: SessionStore): McpServer {
           return text(reply ? reply.content : '(no reply within 2 minutes)');
         }
 
-        case 'wait_for_replies': {
-          const toRoles = (args?.['to'] ?? []) as string[];
-          if (!a['from'] || !a['content'] || toRoles.length === 0)
-            return text('Error: from, to (array), and content are required');
-          const session = store.getByCodeword(a['codeword']);
-          if (!session) return text(`Error: session not found: ${a['codeword']}`);
-
-          // Capture timestamp BEFORE sending so fast replies aren't missed
-          const sentAt = Date.now();
-
-          // Send the message to each target role
-          for (const role of toRoles) {
-            store.addMessage(session.id, a['from'], role, a['content']);
-          }
-
-          // Wait until all target roles have replied
-          const replies = await store.waitForRepliesFrom(
-            session.id, a['from'], toRoles, 120_000, sentAt,
-          );
-          return text(JSON.stringify({ replies }, null, 2));
-        }
 
         default:
           return text(`Error: unknown tool: ${name}`);

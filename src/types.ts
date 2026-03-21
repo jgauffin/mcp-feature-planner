@@ -7,7 +7,7 @@ export type Phase = 'planning' | 'implementing' | 'done';
 export interface Message {
   id: string;
   from: Role;
-  to: Role | 'all';
+  to: Role;
   content: string;
   timestamp: number;
 }

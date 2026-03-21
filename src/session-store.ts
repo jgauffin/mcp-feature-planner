@@ -121,22 +121,24 @@ export class SessionStore {
       `Feature: ${session.feature}\n\n` +
       `PHASE: ${session.phase.toUpperCase()}\n\n` +
       `IMPORTANT: You MUST call get_messages in a continuous loop for the entire session. ` +
-      `Never stop polling — even when get_messages returns no messages, call it again immediately. ` +
+      `Never stop polling — even when get_messages returns no messages, call it again. ` +
+      `The long-poll blocks for up to 60 seconds so there is no need to add extra delays. ` +
       `The coordinator will send you questions and instructions through this channel.\n\n` +
       (session.phase === 'planning'
         ? `You are in PLAN MODE. Rules:\n` +
           `- Be succinct and to the point — no filler, no unnecessary elaboration\n` +
           `- Discuss design only — raise concerns, ask questions, propose approaches\n` +
           `- NO code, NO implementation details\n` +
-          `- Use send_message to communicate, use get_messages to receive\n` +
+          `- Use post_to_chat to share information with the session (the coordinator will see it)\n` +
           `- Use ask_coordinator(codeword, role, question) to block until the coordinator responds\n` +
+          `- You CANNOT send messages directly to other agents — all coordination goes through the coordinator\n` +
           `- Stay in plan mode until you receive a [IMPLEMENTATION MODE] message\n`
         : `Planning is complete. Proceed with implementation.\n`);
 
     return { phase: session.phase, feature: session.feature, instructions, joinedRoles: session.joinedRoles };
   }
 
-  addMessage(sessionId: string, from: Role, to: Role | 'all', content: string): Message {
+  addMessage(sessionId: string, from: Role, to: Role, content: string): Message {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session not found: ${sessionId}`);
 
@@ -158,7 +160,7 @@ export class SessionStore {
     const msgs = session.messages.filter(
       role === 'coordinator'
         ? (m) => m.from !== 'coordinator'   // coordinator sees everything except its own
-        : (m) => m.to === role || m.to === 'all',
+        : (m) => m.to === role,
     );
     if (!after) return msgs;
     const idx = msgs.findIndex((m) => m.id === after);
@@ -198,7 +200,7 @@ export class SessionStore {
     // Notify single-role waiters
     const list = this.waiters.get(sessionId) ?? [];
     const toNotify = list.filter(
-      (w) => message.to === w.role || message.to === 'all',
+      (w) => message.to === w.role,
     );
     for (const waiter of toNotify) {
       const idx = list.indexOf(waiter);
@@ -212,13 +214,13 @@ export class SessionStore {
     const rList = this.replyWaiters.get(sessionId) ?? [];
     for (let i = rList.length - 1; i >= 0; i--) {
       const rw = rList[i];
-      if (message.to !== rw.toRole && message.to !== 'all') continue;
+      if (message.to !== rw.toRole) continue;
       rw.expectedFrom.delete(message.from);
       if (rw.expectedFrom.size === 0) {
         rList.splice(i, 1);
         const session = this.sessions.get(sessionId)!;
         const msgs = session.messages.filter(
-          (m) => (m.to === rw.toRole || m.to === 'all') && m.timestamp >= rw.afterTimestamp,
+          (m) => m.to === rw.toRole && m.timestamp >= rw.afterTimestamp,
         );
         rw.resolve(msgs);
       }
@@ -240,13 +242,13 @@ export class SessionStore {
 
     // Check if any of the expected roles already sent messages since the cutoff
     for (const msg of session.messages) {
-      if (msg.timestamp >= cutoff && (msg.to === toRole || msg.to === 'all')) {
+      if (msg.timestamp >= cutoff && msg.to === toRole) {
         remaining.delete(msg.from);
       }
     }
     if (remaining.size === 0) {
       const msgs = session.messages.filter(
-        (m) => (m.to === toRole || m.to === 'all') && m.timestamp >= cutoff,
+        (m) => m.to === toRole && m.timestamp >= cutoff,
       );
       return Promise.resolve(msgs);
     }
@@ -271,7 +273,7 @@ export class SessionStore {
           const session = this.sessions.get(sessionId);
           const msgs = session
             ? session.messages.filter(
-                (m) => (m.to === toRole || m.to === 'all') && m.timestamp >= waiter.afterTimestamp,
+                (m) => m.to === toRole && m.timestamp >= waiter.afterTimestamp,
               )
             : [];
           resolve(msgs);

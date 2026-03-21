@@ -2,13 +2,13 @@ import express from 'express';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { ProxyAgent } from 'undici';
 import type { SessionStore } from './session-store.js';
+import type { CoordinatorRunner, CoordinatorEmitter } from './coordinator.js';
 import type { Phase, Role } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-export function createHttpServer(store: SessionStore): express.Express {
+export function createHttpServer(store: SessionStore, coordinator: CoordinatorRunner): express.Express {
   const app = express();
 
   app.use(cors());
@@ -62,7 +62,7 @@ export function createHttpServer(store: SessionStore): express.Express {
       res.status(404).json({ error: `Session not found: ${codeword}` });
       return;
     }
-    store.addMessage(session.id, from as Role, to as Role | 'all', content);
+    store.addMessage(session.id, from as Role, to as Role, content);
     res.json({ ok: true });
   });
 
@@ -71,7 +71,7 @@ export function createHttpServer(store: SessionStore): express.Express {
     const { codeword } = req.params;
     const role = req.query['role'] as string | undefined;
     const after = (req.query['after'] as string) || null;
-    const timeout = parseInt((req.query['timeout'] as string) || '20000', 10);
+    const timeout = parseInt((req.query['timeout'] as string) || '60000', 10);
 
     if (!role) {
       res.status(400).json({ error: 'role query param is required' });
@@ -152,7 +152,7 @@ export function createHttpServer(store: SessionStore): express.Express {
       return;
     }
     const messages = session.messages.filter(
-      (m) => (m.to === role || m.to === 'all') && m.timestamp > since,
+      (m) => m.to === role && m.timestamp > since,
     );
     res.json({ messages });
   });
@@ -165,7 +165,10 @@ export function createHttpServer(store: SessionStore): express.Express {
       res.status(404).json({ error: `Session not found: ${codeword}` });
       return;
     }
-    res.json(session);
+    res.json({
+      ...session,
+      coordinatorRunning: coordinator.isRunning(session.id),
+    });
   });
 
   // PATCH /session/:codeword/plan — update full plan (overview + per-role sections)
@@ -203,33 +206,97 @@ export function createHttpServer(store: SessionStore): express.Express {
     });
   });
 
-  // POST /proxy/claude — server-side proxy to Anthropic API (avoids browser CORS)
-  app.post('/proxy/claude', async (req, res) => {
-    const { apiKey, ...payload } = req.body as { apiKey: string; [key: string]: unknown };
-    if (!apiKey) {
-      res.status(400).json({ error: 'apiKey is required' });
+  // POST /session/:codeword/coordinator/trigger — SSE endpoint for coordinator agent loop
+  app.post('/session/:codeword/coordinator/trigger', (req, res) => {
+    const { codeword } = req.params;
+    const { message, apiKey: providedKey } = req.body as { message?: string; apiKey?: string };
+
+    const session = store.getByCodeword(codeword);
+    if (!session) {
+      res.status(404).json({ error: `Session not found: ${codeword}` });
       return;
     }
-    try {
-      const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
-      const fetchOptions: Record<string, unknown> = {
-        method: 'POST',
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      };
-      if (proxyUrl) {
-        fetchOptions.dispatcher = new ProxyAgent(proxyUrl);
-      }
-      const upstream = await fetch('https://api.anthropic.com/v1/messages', fetchOptions);
-      const data = await upstream.json();
-      res.status(upstream.status).json(data);
-    } catch (e) {
-      res.status(502).json({ error: (e as Error).message });
+
+    const apiKey = providedKey || process.env.ANTHROPIC_API_KEY || '';
+    if (!apiKey) {
+      res.status(400).json({ error: 'API key is required (pass apiKey or set ANTHROPIC_API_KEY env var)' });
+      return;
     }
+
+    if (coordinator.isRunning(session.id)) {
+      res.status(409).json({ error: 'Coordinator is already running for this session' });
+      return;
+    }
+
+    // Set up SSE
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const emit: CoordinatorEmitter = {
+      thinking(label: string) {
+        res.write(`event: thinking\ndata: ${JSON.stringify({ label })}\n\n`);
+      },
+      text(content: string) {
+        res.write(`event: text\ndata: ${JSON.stringify({ content })}\n\n`);
+      },
+      toolStart(tool: string, input: Record<string, unknown>) {
+        res.write(`event: tool_start\ndata: ${JSON.stringify({ tool, input })}\n\n`);
+      },
+      toolResult(tool: string, result: string) {
+        res.write(`event: tool_result\ndata: ${JSON.stringify({ tool, result })}\n\n`);
+      },
+      done() {
+        res.write(`event: done\ndata: {}\n\n`);
+        res.end();
+      },
+      error(message: string) {
+        res.write(`event: error\ndata: ${JSON.stringify({ message })}\n\n`);
+      },
+    };
+
+    coordinator.trigger(session.id, message || null, apiKey, emit).catch((e) => {
+      try {
+        res.write(`event: error\ndata: ${JSON.stringify({ message: (e as Error).message })}\n\n`);
+        res.write(`event: done\ndata: {}\n\n`);
+        res.end();
+      } catch { /* response may already be closed */ }
+    });
+  });
+
+  // GET /session/:codeword/coordinator/status
+  app.get('/session/:codeword/coordinator/status', (req, res) => {
+    const { codeword } = req.params;
+    const session = store.getByCodeword(codeword);
+    if (!session) {
+      res.status(404).json({ error: `Session not found: ${codeword}` });
+      return;
+    }
+    res.json({ isRunning: coordinator.isRunning(session.id) });
+  });
+
+  // DELETE /session/:codeword/coordinator/pending — clear queued messages
+  app.delete('/session/:codeword/coordinator/pending', (req, res) => {
+    const { codeword } = req.params;
+    const session = store.getByCodeword(codeword);
+    if (!session) {
+      res.status(404).json({ error: `Session not found: ${codeword}` });
+      return;
+    }
+    const cleared = coordinator.clearPending(session.id);
+    res.json({ cleared });
+  });
+
+  // GET /session/:codeword/coordinator/pending — check pending count
+  app.get('/session/:codeword/coordinator/pending', (req, res) => {
+    const { codeword } = req.params;
+    const session = store.getByCodeword(codeword);
+    if (!session) {
+      res.status(404).json({ error: `Session not found: ${codeword}` });
+      return;
+    }
+    res.json({ count: coordinator.pendingCount(session.id) });
   });
 
   // POST /session/:codeword/phase
