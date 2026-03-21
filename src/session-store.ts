@@ -125,6 +125,7 @@ export class SessionStore {
       `The coordinator will send you questions and instructions through this channel.\n\n` +
       (session.phase === 'planning'
         ? `You are in PLAN MODE. Rules:\n` +
+          `- Be succinct and to the point — no filler, no unnecessary elaboration\n` +
           `- Discuss design only — raise concerns, ask questions, propose approaches\n` +
           `- NO code, NO implementation details\n` +
           `- Use send_message to communicate, use get_messages to receive\n` +
