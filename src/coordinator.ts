@@ -190,6 +190,8 @@ export class CoordinatorRunner {
       '  - overview: shared context (goals, constraints, API contracts between roles)\n' +
       '  - roles: per-role task lists (each agent only sees their own section + overview)\n' +
       '- Flag unresolved questions back to the human\n' +
+      '- Actively look for inconsistencies, gaps, and flaws in the design — challenge assumptions, spot contradictions between roles, and raise issues before they become implementation problems\n' +
+      '- Be succinct and to the point in all communication — no filler, no restating what was already said\n' +
       '- Never write code or suggest implementation details yourself\n' +
       '- You CANNOT transition to implementation — only the human facilitator can do that via the UI. When you believe planning is complete, tell the human and recommend they end planning.\n' +
       '- Before making significant architecture decisions (tech choices, data models, API design, component boundaries, state management approach), present the options and trade-offs to the human and wait for their approval. You coordinate — the human decides.\n' +
