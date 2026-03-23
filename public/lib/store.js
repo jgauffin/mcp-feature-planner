@@ -42,6 +42,14 @@ class AppStore extends EventTarget {
     localStorage.setItem('feature-planner-apikey', val.trim());
   }
 
+  // ── Backend selection ─────────────────────────────────────────
+  get backend() {
+    return localStorage.getItem('feature-planner-backend') || 'api';
+  }
+  set backend(val) {
+    localStorage.setItem('feature-planner-backend', val);
+  }
+
   // ── Session lifecycle ────────────────────────────────────────
   async createSession(feature) {
     const res = await apiPost('/session', { feature });
@@ -110,7 +118,7 @@ class AppStore extends EventTarget {
     fetch(`/session/${this.codeword}/coordinator/trigger`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, apiKey: this.apiKey }),
+      body: JSON.stringify({ message, apiKey: this.apiKey, backend: this.backend }),
     }).then(response => {
       if (!response.ok) {
         response.json().then(data => {
@@ -191,7 +199,15 @@ class AppStore extends EventTarget {
     this.loadState();
   }
 
-  // ── Pending message management ──────────────────────────────
+  // ── Cancel / pending message management ─────────────────────
+  async cancelCoordinator() {
+    const res = await apiPost(`/session/${this.codeword}/coordinator/cancel`, {});
+    if (res.ok) {
+      this.autoTriggerPending = false;
+    }
+    return res;
+  }
+
   async cancelPending() {
     const res = await apiDelete(`/session/${this.codeword}/coordinator/pending`);
     if (res.ok) {
@@ -214,7 +230,7 @@ class AppStore extends EventTarget {
     );
 
     if (newAgentMessages.length > 0) {
-      if (!this.apiKey) return;
+      if (this.backend === 'api' && !this.apiKey) return;
       this.autoTriggerPending = true;
       for (const m of newAgentMessages) this.coordinatorProcessedIds.add(m.id);
 

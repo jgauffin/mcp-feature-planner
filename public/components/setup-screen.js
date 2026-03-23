@@ -15,6 +15,15 @@ class SetupScreen extends HTMLElement {
           </div>
 
           <div class="field">
+            <label for="backend-select">Coordinator backend</label>
+            <select id="backend-select">
+              <option value="api">Anthropic API (direct)</option>
+              <option value="claude-code">Claude Code (CLI)</option>
+            </select>
+            <span class="hint">Choose how the coordinator LLM is invoked</span>
+          </div>
+
+          <div class="field" id="apikey-field">
             <label for="apikey-input">Anthropic API key</label>
             <input type="password" id="apikey-input" placeholder="sk-ant-..." />
             <span class="hint">Stored in localStorage &middot; sent to your local server for coordinator calls</span>
@@ -35,11 +44,28 @@ class SetupScreen extends HTMLElement {
       </div>
     `;
 
+    this.#setupBackend();
     this.#setupApiKey();
     this.#setupStart();
     this.#setupResume();
     this.#loadExistingSessions();
     this.#autoRestore();
+  }
+
+  #setupBackend() {
+    const $backend = this.querySelector('#backend-select');
+    const $apikeyField = this.querySelector('#apikey-field');
+    $backend.value = store.backend;
+
+    const toggleApiKey = () => {
+      $apikeyField.style.display = $backend.value === 'claude-code' ? 'none' : '';
+    };
+    toggleApiKey();
+
+    $backend.addEventListener('change', () => {
+      store.backend = $backend.value;
+      toggleApiKey();
+    });
   }
 
   #setupApiKey() {
@@ -52,8 +78,10 @@ class SetupScreen extends HTMLElement {
     this.querySelector('#start-btn').addEventListener('click', async () => {
       const feature = this.querySelector('#feature-input').value.trim();
       if (!feature) { alert('Enter a feature name.'); return; }
-      const apiKey = this.querySelector('#apikey-input').value.trim();
-      if (!apiKey) { alert('Enter your Anthropic API key.'); return; }
+      if (store.backend === 'api') {
+        const apiKey = this.querySelector('#apikey-input').value.trim();
+        if (!apiKey) { alert('Enter your Anthropic API key.'); return; }
+      }
 
       try {
         await store.createSession(feature);
@@ -71,8 +99,10 @@ class SetupScreen extends HTMLElement {
     sel.addEventListener('change', () => { btn.disabled = !sel.value; });
 
     btn.addEventListener('click', () => {
-      const apiKey = this.querySelector('#apikey-input').value.trim();
-      if (!apiKey) { alert('Enter your Anthropic API key.'); return; }
+      if (store.backend === 'api') {
+        const apiKey = this.querySelector('#apikey-input').value.trim();
+        if (!apiKey) { alert('Enter your Anthropic API key.'); return; }
+      }
       if (!sel.value) return;
 
       store.resumeSession(sel.value);

@@ -120,15 +120,30 @@ Or add it manually to `~/.claude/settings.json` or `.mcp.json`:
 
 One Express server, two interfaces on the same port:
 
-- **`/`** — Single-page web UI. The coordinator Claude runs as a tool-use loop in the browser, calling the Anthropic API through a local proxy (`/proxy/claude`) to avoid CORS.
+- **`/`** — Single-page web UI for the facilitator. Watch the coordinator discuss with agents, send nudges, and control the session phase.
 - **`/mcp`** — Streamable HTTP MCP endpoint. Each agent gets its own MCP session; all share the same in-memory session store.
 
 Sessions persist to `data/sessions.json` and survive server restarts. API keys stay in the browser's localStorage and never touch disk on the server.
+
+### Coordinator backends
+
+The coordinator — the AI that interviews agents and writes the plan — supports two backends:
+
+| Backend | How it works | When to use |
+|---|---|---|
+| **`api`** (default) | Calls the Anthropic Messages API directly. Stateless — sends the full plan snapshot in the system prompt each turn. Uses `patch_plan` for token-efficient incremental updates. | When you have an Anthropic API key and want the simplest setup. |
+| **`claude-code`** | Runs Claude Code via the `@anthropic-ai/claude-agent-sdk`. Stateful — maintains a persistent Claude Code session with `resume`. Exposes coordinator tools (`send_message`, `wait_for_replies`, `update_plan`) as an in-process MCP server, giving tool callbacks direct access to the session store. | When you want to leverage Claude Code's full capabilities (context management, extended thinking) for coordination. |
+
+Set the backend via the `COORDINATOR_BACKEND` environment variable or per-request in the UI:
+
+```bash
+COORDINATOR_BACKEND=claude-code npm start
+```
 
 ## Configuration
 
 | Option | Default | Description |
 |---|---|---|
 | `PORT` | `3000` | HTTP server port |
-
-The coordinator runs Claude Sonnet via the Anthropic API. You provide the key in the web UI — it's stored in your browser only.
+| `COORDINATOR_BACKEND` | `api` | Coordinator backend: `api` or `claude-code` |
+| `ANTHROPIC_API_KEY` | — | API key for the `api` backend (can also be provided in the web UI) |

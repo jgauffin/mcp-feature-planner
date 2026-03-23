@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import type { SessionStore } from './session-store.js';
 import type { CoordinatorRunner, CoordinatorEmitter } from './coordinator.js';
+import type { BackendType } from './coordinator/coordinator-backend.js';
 import type { Phase, Role } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -209,7 +210,11 @@ export function createHttpServer(store: SessionStore, coordinator: CoordinatorRu
   // POST /session/:codeword/coordinator/trigger — SSE endpoint for coordinator agent loop
   app.post('/session/:codeword/coordinator/trigger', (req, res) => {
     const { codeword } = req.params;
-    const { message, apiKey: providedKey } = req.body as { message?: string; apiKey?: string };
+    const { message, apiKey: providedKey, backend: backendOverride } = req.body as {
+      message?: string;
+      apiKey?: string;
+      backend?: BackendType;
+    };
 
     const session = store.getByCodeword(codeword);
     if (!session) {
@@ -217,8 +222,9 @@ export function createHttpServer(store: SessionStore, coordinator: CoordinatorRu
       return;
     }
 
+    const effectiveBackend = backendOverride || 'api';
     const apiKey = providedKey || process.env.ANTHROPIC_API_KEY || '';
-    if (!apiKey) {
+    if (effectiveBackend === 'api' && !apiKey) {
       res.status(400).json({ error: 'API key is required (pass apiKey or set ANTHROPIC_API_KEY env var)' });
       return;
     }
@@ -256,7 +262,7 @@ export function createHttpServer(store: SessionStore, coordinator: CoordinatorRu
       },
     };
 
-    coordinator.trigger(session.id, message || null, apiKey, emit).catch((e) => {
+    coordinator.trigger(session.id, message || null, apiKey, emit, backendOverride).catch((e) => {
       try {
         res.write(`event: error\ndata: ${JSON.stringify({ message: (e as Error).message })}\n\n`);
         res.write(`event: done\ndata: {}\n\n`);
@@ -274,6 +280,20 @@ export function createHttpServer(store: SessionStore, coordinator: CoordinatorRu
       return;
     }
     res.json({ isRunning: coordinator.isRunning(session.id) });
+  });
+
+  // POST /session/:codeword/coordinator/cancel — abort the running coordinator
+  app.post('/session/:codeword/coordinator/cancel', (req, res) => {
+    const { codeword } = req.params;
+    const session = store.getByCodeword(codeword);
+    if (!session) {
+      res.status(404).json({ error: `Session not found: ${codeword}` });
+      return;
+    }
+    const cancelled = coordinator.cancel(session.id);
+    // Also clear any pending messages so the coordinator doesn't auto-resume
+    const cleared = coordinator.clearPending(session.id);
+    res.json({ cancelled, cleared });
   });
 
   // DELETE /session/:codeword/coordinator/pending — clear queued messages

@@ -233,6 +233,7 @@ export class SessionStore {
     expectedFrom: string[],
     timeoutMs: number,
     afterTimestamp?: number,
+    signal?: AbortSignal,
   ): Promise<Message[]> {
     const session = this.sessions.get(sessionId);
     if (!session) return Promise.reject(new Error(`Session not found: ${sessionId}`));
@@ -264,12 +265,11 @@ export class SessionStore {
       list.push(waiter);
       this.replyWaiters.set(sessionId, list);
 
-      setTimeout(() => {
+      const removeWaiter = () => {
         const current = this.replyWaiters.get(sessionId) ?? [];
         const idx = current.indexOf(waiter);
         if (idx !== -1) {
           current.splice(idx, 1);
-          // Resolve with whatever we have so far
           const session = this.sessions.get(sessionId);
           const msgs = session
             ? session.messages.filter(
@@ -278,7 +278,13 @@ export class SessionStore {
             : [];
           resolve(msgs);
         }
-      }, timeoutMs);
+      };
+
+      setTimeout(removeWaiter, timeoutMs);
+
+      if (signal) {
+        signal.addEventListener('abort', removeWaiter, { once: true });
+      }
     });
   }
 
@@ -310,6 +316,31 @@ export class SessionStore {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Session not found: ${sessionId}`);
     session.plan = { overview, roles };
+    this.save();
+  }
+
+  /**
+   * Apply a partial/diff update to the plan.
+   * - If overview is provided, it replaces the current overview.
+   * - For roles, only provided keys are updated (merged, not replaced wholesale).
+   *   A role value of "" removes that role's section.
+   */
+  patchPlan(sessionId: string, overview: string | null, roles: Record<string, string> | null): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`Session not found: ${sessionId}`);
+
+    if (overview !== null) {
+      session.plan.overview = overview;
+    }
+    if (roles) {
+      for (const [role, content] of Object.entries(roles)) {
+        if (content === '') {
+          delete session.plan.roles[role];
+        } else {
+          session.plan.roles[role] = content;
+        }
+      }
+    }
     this.save();
   }
 

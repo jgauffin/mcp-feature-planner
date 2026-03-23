@@ -44,7 +44,7 @@ class ChatPanel extends HTMLElement {
             <div class="input-row">
               <textarea id="msg-input" placeholder="Talk to coordinator Claude &mdash; it will engage the agents&hellip;"></textarea>
               <button class="btn-primary" id="send-btn">Send to Claude</button>
-              <button class="btn-danger hidden" id="cancel-pending-btn" title="Cancel queued messages so coordinator won't auto-resume">Cancel pending</button>
+              <button class="btn-danger hidden" id="cancel-btn" title="Cancel the running coordinator">Cancel</button>
             </div>
           </div>
         </div>
@@ -80,7 +80,7 @@ class ChatPanel extends HTMLElement {
   #setupInput() {
     const sendBtn = this.querySelector('#send-btn');
     const input = this.querySelector('#msg-input');
-    const cancelBtn = this.querySelector('#cancel-pending-btn');
+    const cancelBtn = this.querySelector('#cancel-btn');
 
     sendBtn.addEventListener('click', () => this.#sendToCoordinator());
     input.addEventListener('keydown', e => {
@@ -88,10 +88,10 @@ class ChatPanel extends HTMLElement {
     });
     cancelBtn.addEventListener('click', async () => {
       cancelBtn.disabled = true;
-      const res = await store.cancelPending();
+      const res = await store.cancelCoordinator();
       cancelBtn.disabled = false;
       if (res.ok) {
-        this.#appendLog(`Cancelled ${res.data.cleared} pending message(s).`);
+        this.#appendLog(`Coordinator cancelled (${res.data.cleared} pending message(s) cleared).`);
       }
     });
   }
@@ -101,7 +101,7 @@ class ChatPanel extends HTMLElement {
     const text = input.value.trim();
     if (!text) return;
 
-    if (!store.apiKey) { alert('Set your Anthropic API key first.'); return; }
+    if (store.backend === 'api' && !store.apiKey) { alert('Set your Anthropic API key first.'); return; }
 
     input.value = '';
     await store.sendUserMessage(text);
@@ -151,7 +151,7 @@ class ChatPanel extends HTMLElement {
 
   #onCoordinatorEvent(detail) {
     const sendBtn = this.querySelector('#send-btn');
-    const cancelBtn = this.querySelector('#cancel-pending-btn');
+    const cancelBtn = this.querySelector('#cancel-btn');
 
     switch (detail.type) {
       case 'sending':
