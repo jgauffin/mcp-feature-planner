@@ -1,5 +1,9 @@
 # Feature Planner
 
+-------------
+***Will release the first real version this weekend (end of March). So hang on***
+-----------
+
 **Turn multiple Claude Code agents into a coordinated team.**
 
 Multiple Claude Code agents working on the same feature will step on each other — conflicting designs, duplicated work, assumptions that don't align. Feature Planner solves this by making agents *talk to each other* before they touch code.
